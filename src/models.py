@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, Field
 from typing import Any
 
 
@@ -13,7 +13,15 @@ class FunctionDefinition(BaseModel):
     parameters: dict[str, ParameterSpec]
     returns: ParameterSpec
 
+class PromptItem(BaseModel):
+    prompt: str = Field(min_length=1)
 
+    @field_validator("prompt")
+    @classmethod
+    def not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("prompt must not be blank")
+        return v
 class FunctionCall(BaseModel):
     prompt: str
     name: str
