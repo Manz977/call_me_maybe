@@ -4,7 +4,7 @@ from typing import Any
 
 class ParameterSpec(BaseModel):
     type: str
-    description: str
+    description: str = ""
 
 
 class FunctionDefinition(BaseModel):

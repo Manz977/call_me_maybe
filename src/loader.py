@@ -11,7 +11,7 @@ class JsonIO:
     @staticmethod
     def _read_json(path: str | Path) -> object:
         try:
-            with open(path, "r", encoding="uft-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
         except FileNotFoundError as exc:
             raise JsonIOErorr(f"Input file not found: {path}") from exc
