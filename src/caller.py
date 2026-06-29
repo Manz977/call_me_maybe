@@ -13,7 +13,8 @@ if TYPE_CHECKING:
 
 def _selection_prompt(prompt: str, functions: list[FunctionDefinition]) -> str:
     lines = [
-        "You are a function dispatcher. Given a user request, reply with ONLY the name of the function to call — nothing else.\n",
+        "You are a function dispatcher. Given a user request, "
+        "reply with ONLY the name of the function to call — nothing else.\n",
         "Available functions:",
     ]
     for fn in functions:
@@ -41,4 +42,34 @@ def _arg_prompt(
     )
 
 
+class FunctionCaller:
+    def __init__(
+        self,
+        generator: "Generator",
+        vocabulary: "Vocabulary",
+        functions_by_name: dict[str, FunctionDefinition],
+    ) -> None:
+        self._generator = generator
+        self._vocab = vocabulary
+        self._functions_by_name = functions_by_name
 
+    def process(self, prompt: str) -> FunctionCall:
+        model = self._generator._model
+        functions = list(self._functions_by_name.values())
+
+        sel_prompt = _selection_prompt(prompt, functions)
+        name_ids = self._generator.generate(
+            model.encode(sel_prompt).squeeze(0).tolist(),
+            NameConstraint(list(self._functions_by_name.keys())),
+        )
+        name = model.decode(name_ids).strip()
+
+        schema = self._functions_by_name[name].parameters
+        arg_prompt = _arg_prompt(prompt, name, schema)
+        arg_ids = self._generator.generate(
+            model.encode(arg_prompt).squeeze(0).tolist(),
+            JsonConstraint(schema),
+        )
+        params = json.loads(model.decode(arg_ids))
+
+        return FunctionCall(prompt=prompt, name=name, parameters=params)
