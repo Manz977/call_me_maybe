@@ -85,3 +85,164 @@ class _State:
     AFTER_VALUE = "AFTER_VALUE"
     DONE = "DONE"
 
+#pushed until here
+class JsonConstraint:
+    def __init__(self, schema: dict[str, "ParameterSpec"]) -> None:
+        self._schema = schema
+        self._state: str = _State.START
+        self._emitted_keys: set[str] = set()
+        self._current_key: str | None = None
+        self._key_progress: str = ""
+
+        self._value_buf: str = ""
+
+    def legal_tokens(self, vocab: "Vocabulary") -> "frozenset[int] | set[int]":
+        s = self._state
+
+        if s == _State.START:
+            return vocab.ids_where(lambda t: t == "{")
+
+        if s == _State.AFTER_BRACE:
+            tokens = vocab.ids_where(lambda t: t == '"')
+            if not self._remaining_keys():
+                tokens |= vocab.ids_where(lambda t: t == "}")
+            return tokens
+
+        if s == _State.IN_KEY:
+            assert self._current_key is not None
+            remaining = self._current_key[len(self._key_progress):]
+            if not remaining:
+                return vocab.ids_where(lambda t: t == '"')
+            def key_ok(surface: str) -> bool:
+                return remaining.startswith(surface) or surface == remaining
+            return vocab.ids_where(key_ok)
+
+        if s == _State.AFTER_KEY:
+            return vocab.ids_where(lambda t: t == ":")
+
+        if s == _State.BEFORE_VALUE:
+            assert self._current_key is not None
+            typ = self._schema[self._current_key].type
+            if typ == "string":
+                return vocab.ids_where(lambda t: t == '"')
+            if typ in ("number", "integer"):
+                return vocab.structural & vocab.digit_like | vocab.ids_where(
+                    lambda t: t.lstrip("-").replace(".", "", 1).isdigit() or t in ("+", "-")
+                )
+            if typ == "boolean":
+                return vocab.bool_tokens
+
+        if s == _State.IN_NUMBER:
+            has_more = bool(self._remaining_keys())
+            tokens = set(vocab.digit_like)
+            tokens |= vocab.ids_where(lambda t: t == "}")
+            if has_more:
+                tokens |= vocab.ids_where(lambda t: t == ",")
+            return tokens
+
+        if s == _State.IN_STRING:
+            return vocab.string_safe | vocab.ids_where(lambda t: t == '"')
+
+        if s == _State.IN_BOOL:
+            has_more = bool(self._remaining_keys())
+            tokens = set(vocab.bool_tokens)
+            tokens |= vocab.ids_where(lambda t: t == "}")
+            if has_more:
+                tokens |= vocab.ids_where(lambda t: t == ",")
+            return tokens
+
+        if s == _State.AFTER_VALUE:
+            has_more = bool(self._remaining_keys())
+            tokens: set[int] = vocab.ids_where(lambda t: t == "}")
+            if has_more:
+                tokens |= vocab.ids_where(lambda t: t == ",")
+            return tokens
+
+        return set()
+#next push until here
+    def advance(self, token_id: int, vocab: "Vocabulary") -> None:
+        surface = vocab.surface(token_id)
+        s = self._state
+
+        if s == _State.START:
+            if surface == "{":
+                self._state = _State.AFTER_BRACE
+            return
+
+        if s == _State.AFTER_BRACE:
+            if surface == "}":
+                self._state = _State.DONE
+            elif surface == '"':
+                self._current_key = self._pick_next_key()
+                self._key_progress = ""
+                self._state = _State.IN_KEY
+            return
+
+        if s == _State.IN_KEY:
+            assert self._current_key is not None
+            remaining = self._current_key[len(self._key_progress):]
+            if surface == '"' and not remaining:
+                self._emitted_keys.add(self._current_key)
+                self._state = _State.AFTER_KEY
+            else:
+                self._key_progress += surface
+            return
+
+        if s == _State.AFTER_KEY:
+            if surface == ":":
+                self._state = _State.BEFORE_VALUE
+            return
+
+        if s == _State.BEFORE_VALUE:
+            assert self._current_key is not None
+            typ = self._schema[self._current_key].type
+            self._value_buf = surface
+            if typ == "string":
+                self._state = _State.IN_STRING
+            elif typ in ("number", "integer"):
+                self._state = _State.IN_NUMBER
+            elif typ == "boolean":
+                self._state = _State.IN_BOOL
+            return
+
+        if s == _State.IN_NUMBER:
+            if surface == "}":
+                self._state = _State.DONE
+            elif surface == ",":
+                self._state = _State.AFTER_BRACE
+            else:
+                self._value_buf += surface
+            return
+
+        if s == _State.IN_STRING:
+            if surface == '"':
+                self._state = _State.AFTER_VALUE
+            return
+
+        if s == _State.IN_BOOL:
+            if surface == "}":
+                self._state = _State.DONE
+            elif surface == ",":
+                self._state = _State.AFTER_BRACE
+            else:
+                self._value_buf += surface
+            return
+
+        if s == _State.AFTER_VALUE:
+            if surface == "}":
+                self._state = _State.DONE
+            elif surface == ",":
+                self._state = _State.AFTER_BRACE
+            return
+
+    def is_complete(self) -> bool:
+        return self._state == _State.DONE
+
+    def _remaining_keys(self) -> list[str]:
+        return [k for k in self._schema if k not in self._emitted_keys]
+
+    def _pick_next_key(self) -> str:
+        remaining = self._remaining_keys()
+        if not remaining:
+            raise RuntimeError("No keys left to emit")
+        return remaining[0]
