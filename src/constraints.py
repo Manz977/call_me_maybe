@@ -85,7 +85,7 @@ class _State:
     AFTER_VALUE = "AFTER_VALUE"
     DONE = "DONE"
 
-#pushed until here
+
 class JsonConstraint:
     def __init__(self, schema: dict[str, "ParameterSpec"]) -> None:
         self._schema = schema
@@ -159,7 +159,7 @@ class JsonConstraint:
             return tokens
 
         return set()
-#next push until here
+
     def advance(self, token_id: int, vocab: "Vocabulary") -> None:
         surface = vocab.surface(token_id)
         s = self._state
