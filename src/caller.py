@@ -1,3 +1,10 @@
+"""Ties the generator and constraints together into an actual function call.
+
+Given a raw user prompt, this module first asks the model to pick a function
+name under a name only constraint, then asks it to fill in the arguments
+under a JSON constraint built from that function's parameter schema.
+"""
+
 from __future__ import annotations
 
 import json
@@ -12,6 +19,11 @@ if TYPE_CHECKING:
 
 
 def _selection_prompt(prompt: str, functions: list[FunctionDefinition]) -> str:
+    """Builds the prompt that gets the model to name which function to call.
+
+    Every candidate function is listed with its signature and description so
+    the model has enough to go on when picking one.
+    """
     lines = [
         "You are a function dispatcher. Given a user request, "
         "reply with ONLY the name of the function to call — nothing else.\n",
@@ -30,6 +42,11 @@ def _arg_prompt(
     name: str,
     schema: dict[str, ParameterSpec],
 ) -> str:
+    """Builds the prompt that gets the model to fill in a function's arguments.
+
+    It's explicitly told to copy values straight out of the user request
+    rather than computing the actually function.
+    """
     params_desc = ", ".join(
         f'"{k}": {v.type}' for k, v in schema.items()
     )
@@ -37,23 +54,36 @@ def _arg_prompt(
         f"You are filling in arguments for the function `{name}`.\n"
         f"Parameters: {{{params_desc}}}\n"
         f"User request: {prompt}\n"
-        f"Reply with ONLY a valid JSON object containing the arguments.\n"
+        f"Reply with ONLY a valid JSON object containing the arguments, "
+        f"using values copied verbatim from the user request — "
+        f"do not compute, transform, or evaluate the function yourself.\n"
         f"JSON:"
     )
 
 
 class FunctionCaller:
+    """Turns a natural language prompt into a validated FunctionCall."""
+
     def __init__(
         self,
         generator: "Generator",
         vocabulary: "Vocabulary",
         functions_by_name: dict[str, FunctionDefinition],
     ) -> None:
+        """Stores the generator, vocabulary,
+        and functions this caller can dispatch to."""
         self._generator = generator
         self._vocab = vocabulary
         self._functions_by_name = functions_by_name
 
     def process(self, prompt: str) -> FunctionCall:
+        """Resolves one prompt into a function call,
+        name first and then arguments.
+
+        The model picks a function name under a NameConstraint, then fills
+        in that function's arguments under a JsonConstraint built from its
+        schema, with the resulting values cast to their declared types.
+        """
         model = self._generator._model
         functions = list(self._functions_by_name.values())
 
@@ -72,7 +102,8 @@ class FunctionCaller:
         )
         params = json.loads(model.decode(arg_ids))
         params = {
-            key: TYPE_MAP[schema[key].type](value) for key, value in params.items()
+            key: TYPE_MAP[schema[key].type](value)
+            for key, value in params.items()
         }
 
         return FunctionCall(prompt=prompt, name=name, parameters=params)

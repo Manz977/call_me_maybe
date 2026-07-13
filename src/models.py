@@ -1,3 +1,10 @@
+"""The pydantic models shared across the pipeline, plus one type map.
+
+These describe the shape of function definitions, incoming prompts, and the
+function calls we ultimately produce, so loading and validation stay
+consistent everywhere they're used.
+"""
+
 from pydantic import BaseModel, field_validator, Field
 from typing import Any
 
@@ -20,6 +27,7 @@ class PromptItem(BaseModel):
     @field_validator("prompt")
     @classmethod
     def not_blank(cls, v: str) -> str:
+        """Rejects prompts that are empty or whitespace-only."""
         if not v.strip():
             raise ValueError("prompt must not be blank")
         return v

@@ -1,3 +1,11 @@
+"""A thin wrapper around the tokenizer's vocab file for constrained decoding.
+
+Vocabulary loads the token-to-id table once and precomputes a handful of
+useful token sets — structural JSON characters, digit-like tokens,
+string-safe tokens, and boolean substrings — so the constraints don't have
+to scan the whole vocab on every step.
+"""
+
 import json
 import re
 from pathlib import Path
@@ -16,7 +24,12 @@ _CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class Vocabulary:
+    """Wraps a tokenizer vocab file and precomputes token sets used to
+    constrain generation."""
+
     def __init__(self, vocab_path: str | Path) -> None:
+        """Loads the token-to-id table from disk and precomputes the
+        structural, digit, string-safe, and boolean token sets."""
         path = Path(vocab_path)
         raw = json.loads(path.read_text(encoding="utf-8"))
 
@@ -56,11 +69,17 @@ class Vocabulary:
         )
 
     def surface(self, token_id: int) -> str:
+        """Returns the human-readable text a token id decodes to, with
+        the tokenizer's space and newline markers translated."""
         raw = self._id_to_token[token_id]
         return raw.replace("Ġ", " ").replace("Ċ", "\n")
 
     def ids_where(self, predicate: "Callable[[str], bool]") -> set[int]:
+        """Returns every token id whose surface form satisfies the
+        given predicate."""
         return {i for i in self._id_to_token if predicate(self.surface(i))}
 
     def tokens_extending(self, prefix: str, candidates: set[int]) -> set[int]:
+        """Filters a set of candidate token ids down to the ones whose
+        surface form extends the given prefix."""
         return {i for i in candidates if self.surface(i).startswith(prefix)}

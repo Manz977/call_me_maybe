@@ -1,3 +1,10 @@
+"""Command line entry point that wires the whole pipeline together.
+
+It loads the function definitions and prompts, spins up the model and
+vocabulary, then runs each prompt through the FunctionCaller and writes
+whatever comes out to the output file.
+"""
+
 import argparse
 import logging
 import sys
@@ -13,7 +20,10 @@ log = logging.getLogger(__name__)
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run constrained function-call generation.")
+    """Parses the CLI flags for input/output paths and which model to run."""
+    parser = argparse.ArgumentParser(
+        description="Run constrained function-call generation."
+    )
     parser.add_argument(
         "--functions-definition",
         default="data/input/functions_definition.json",
@@ -38,6 +48,13 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Loads inputs, runs every prompt
+    through the model, and writes the results.
+
+    Any prompt that hits a dead end in
+    constrained generation is logged and
+    skipped rather than crashing the whole run.
+    """
     args = _parse_args()
 
     try:
@@ -47,7 +64,9 @@ def main() -> None:
         print(f"Error loading input files: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    log.info("Loaded %d function(s) and %d prompt(s).", len(funcs), len(prompts))
+    log.info(
+        "Loaded %d function(s) and %d prompt(s).", len(funcs), len(prompts)
+    )
 
     try:
         from llm_sdk import Small_LLM_Model
@@ -66,7 +85,9 @@ def main() -> None:
         try:
             record = caller.process(prompt)
             records.append(record)
-            log.info("OK  %r -> %s(%s)", prompt, record.name, record.parameters)
+            log.info(
+                "OK  %r -> %s(%s)", prompt, record.name, record.parameters
+            )
         except ControlledGenerationError as exc:
             log.warning("Skipping prompt %r: %s", prompt, exc)
 

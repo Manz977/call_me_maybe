@@ -1,3 +1,10 @@
+"""Reading and writing the JSON files this project passes around.
+
+JsonIO loads function definitions and prompts off disk and validates them
+against the pydantic models, then serializes the resulting FunctionCall
+records back out once generation is done.
+"""
+
 import json
 from pathlib import Path
 from pydantic import TypeAdapter, ValidationError
@@ -9,8 +16,13 @@ class JsonIOErorr(Exception):
 
 
 class JsonIO:
+    """Static helpers for loading and validating the project's JSON
+    inputs and outputs."""
+
     @staticmethod
     def _read_json(path: str | Path) -> object:
+        """Reads and parses a JSON file, wrapping missing-file and
+        parse errors in JsonIOErorr."""
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.load(f)
@@ -23,6 +35,8 @@ class JsonIO:
     def load_function_definitions(
         path: str | Path,
     ) -> list[FunctionDefinition]:
+        """Loads a file's worth of function definitions and validates
+        each one against the schema."""
         raw = JsonIO._read_json(path)
         try:
             return TypeAdapter(list[FunctionDefinition]).validate_python(raw)
@@ -33,6 +47,8 @@ class JsonIO:
 
     @staticmethod
     def load_prompts(path: str | Path) -> list[str]:
+        """Loads a file of prompt items and returns just the prompt
+        strings, rejecting any that are blank."""
         raw = JsonIO._read_json(path)
         try:
             items = TypeAdapter(list[PromptItem]).validate_python(raw)
@@ -42,6 +58,8 @@ class JsonIO:
 
     @staticmethod
     def write_results(path: str | Path, records: list[FunctionCall]) -> None:
+        """Writes the generated function calls out as JSON, creating
+        parent directories if needed."""
         output_path = Path(path)
         try:
             output_path.parent.mkdir(parents=True, exist_ok=True)
