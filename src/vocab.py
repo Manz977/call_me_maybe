@@ -1,6 +1,7 @@
 import json
 import re
 from pathlib import Path
+from typing import Callable
 
 
 _BOOL_SUBSTRINGS: frozenset[str] = frozenset(
@@ -58,7 +59,7 @@ class Vocabulary:
         raw = self._id_to_token[token_id]
         return raw.replace("Ġ", " ").replace("Ċ", "\n")
 
-    def ids_where(self, predicate) -> set[int]:
+    def ids_where(self, predicate: "Callable[[str], bool]") -> set[int]:
         return {i for i in self._id_to_token if predicate(self.surface(i))}
 
     def tokens_extending(self, prefix: str, candidates: set[int]) -> set[int]:
