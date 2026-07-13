@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 from .constraints import JsonConstraint, NameConstraint
-from .models import FunctionCall, FunctionDefinition, ParameterSpec
+from .models import TYPE_MAP, FunctionCall, FunctionDefinition, ParameterSpec
 
 if TYPE_CHECKING:
     from .generator import Generator
@@ -71,5 +71,8 @@ class FunctionCaller:
             JsonConstraint(schema),
         )
         params = json.loads(model.decode(arg_ids))
+        params = {
+            key: TYPE_MAP[schema[key].type](value) for key, value in params.items()
+        }
 
         return FunctionCall(prompt=prompt, name=name, parameters=params)
